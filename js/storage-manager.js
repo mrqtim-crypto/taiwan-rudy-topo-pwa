@@ -1,179 +1,189 @@
 /**
- * 離線圖資儲存管理器 (支援 OPFS - Origin Private File System 及 IndexedDB)
+ * 離線圖資儲存管理器 (全面相容 iOS Safari 與 Android / 桌面端)
+ * 使用 IndexedDB 儲存大型 PMTiles 二進位資料 (Blob)，避開 iOS Safari 不支援 OPFS createWritable 的問題
  */
 
 export class StorageManager {
   constructor() {
-    this.dbName = 'rudy_topo_offline_db';
-    this.storeName = 'tiles_metadata';
-    this.opfsRoot = null;
-    this.isOpfsSupported = false;
+    this.dbName = 'TaiwanRudyTopoDB';
+    this.storeName = 'offline_maps';
+    this.db = null;
   }
 
+  /**
+   * 初始化 IndexedDB
+   */
   async init() {
-    if (navigator.storage && navigator.storage.getDirectory) {
-      try {
-        this.opfsRoot = await navigator.storage.getDirectory();
-        this.isOpfsSupported = true;
-        console.log('[StorageManager] OPFS initialized successfully.');
-      } catch (e) {
-        console.warn('[StorageManager] OPFS failed, falling back to IndexedDB:', e);
-        this.isOpfsSupported = false;
-      }
-    }
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 1);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName, { keyPath: 'name' });
+        }
+      };
+
+      request.onsuccess = (event) => {
+        this.db = event.target.result;
+        console.log('[StorageManager] IndexedDB initialized successfully (iOS & Cross-platform compatible).');
+        resolve(this.db);
+      };
+
+      request.onerror = (event) => {
+        console.error('[StorageManager] IndexedDB init error:', event.target.error);
+        reject(event.target.error);
+      };
+    });
   }
 
   /**
    * 取得已儲存的離線圖資檔案列表
    */
   async listOfflineMaps() {
-    if (this.isOpfsSupported && this.opfsRoot) {
-      const files = [];
-      try {
-        // @ts-ignore
-        for await (const [name, handle] of this.opfsRoot.entries()) {
-          if (handle.kind === 'file' && (name.endsWith('.pmtiles') || name.endsWith('.mbtiles'))) {
-            const file = await handle.getFile();
-            files.push({
-              name,
-              size: file.size,
-              lastModified: file.lastModified,
-              fileHandle: handle
-            });
-          }
-        }
-      } catch (err) {
-        console.error('[StorageManager] Error listing OPFS files:', err);
-      }
-      return files;
-    }
-    return [];
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction([this.storeName], 'readonly');
+      const store = tx.objectStore(this.storeName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const items = request.result || [];
+        const mapped = items.map((item) => ({
+          name: item.name,
+          size: item.size || (item.blob ? item.blob.size : 0),
+          lastModified: item.lastModified || Date.now()
+        }));
+        resolve(mapped);
+      };
+
+      request.onerror = (e) => reject(e.target.error);
+    });
   }
 
   /**
-   * 將 File 物件儲存至 OPFS
+   * 將 File 或 Blob 物件儲存至 IndexedDB
    */
-  async saveFileToOPFS(fileName, fileOrBlob, onProgress = null) {
-    if (!this.isOpfsSupported || !this.opfsRoot) {
-      throw new Error('瀏覽器不支援 OPFS 本地大容量儲存');
-    }
+  async saveFile(fileName, fileOrBlob) {
+    if (!this.db) await this.init();
 
-    const fileHandle = await this.opfsRoot.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable();
+    const record = {
+      name: fileName,
+      blob: fileOrBlob,
+      size: fileOrBlob.size,
+      lastModified: fileOrBlob.lastModified || Date.now()
+    };
 
-    if (fileOrBlob.stream && onProgress) {
-      const total = fileOrBlob.size;
-      let loaded = 0;
-      const reader = fileOrBlob.stream().getReader();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction([this.storeName], 'readwrite');
+      const store = tx.objectStore(this.storeName);
+      const request = store.put(record);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        await writable.write(value);
-        loaded += value.length;
-        if (onProgress) {
-          onProgress({ loaded, total, percent: Math.round((loaded / total) * 100) });
-        }
-      }
-    } else {
-      await writable.write(fileOrBlob);
-    }
+      request.onsuccess = () => {
+        console.log(`[StorageManager] Saved ${fileName} (${record.size} bytes) to IndexedDB.`);
+        resolve(true);
+      };
 
-    await writable.close();
-    return fileHandle;
+      request.onerror = (e) => {
+        console.error('[StorageManager] Save file error:', e.target.error);
+        reject(e.target.error);
+      };
+    });
   }
 
   /**
-   * 從 OPFS 讀取 File 物件
+   * 從 IndexedDB 取出 Blob 物件
    */
-  async getFileFromOPFS(fileName) {
-    if (!this.isOpfsSupported || !this.opfsRoot) {
-      throw new Error('OPFS 不可用');
-    }
-    const fileHandle = await this.opfsRoot.getFileHandle(fileName);
-    return await fileHandle.getFile();
+  async getFile(fileName) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction([this.storeName], 'readonly');
+      const store = tx.objectStore(this.storeName);
+      const request = store.get(fileName);
+
+      request.onsuccess = () => {
+        if (request.result && request.result.blob) {
+          resolve(request.result.blob);
+        } else {
+          reject(new Error(`找不到圖資檔案「${fileName}」`));
+        }
+      };
+
+      request.onerror = (e) => reject(e.target.error);
+    });
   }
 
   /**
-   * 刪除 OPFS 中的圖資
+   * 刪除已儲存的圖資
    */
   async deleteFile(fileName) {
-    if (this.isOpfsSupported && this.opfsRoot) {
-      await this.opfsRoot.removeEntry(fileName);
-      return true;
-    }
-    return false;
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction([this.storeName], 'readwrite');
+      const store = tx.objectStore(this.storeName);
+      const request = store.delete(fileName);
+
+      request.onsuccess = () => resolve(true);
+      request.onerror = (e) => reject(e.target.error);
+    });
   }
 
   /**
-   * 下載線上圖資並串流寫入 OPFS
-   * @param {string} url 
-   * @param {string} targetFileName 
-   * @param {Function} onProgress 
-   * @param {AbortSignal} signal 
+   * 線上下載圖資並存入 IndexedDB (使用 XMLHttpRequest 確保在 iOS Safari 進度回報與二進位串流最佳相容性)
    */
-  async downloadAndStoreMap(url, targetFileName, onProgress, signal) {
-    if (!this.isOpfsSupported || !this.opfsRoot) {
-      throw new Error('此瀏覽器未啟用 OPFS，無法直接進行大檔離線儲存');
-    }
+  async downloadAndStoreMap(url, targetFileName, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.responseType = 'blob';
 
-    const response = await fetch(url, { signal });
-    if (!response.ok) {
-      throw new Error(`下載失敗：HTTP ${response.status} ${response.statusText}`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    const total = contentLength ? parseInt(contentLength, 10) : 0;
-    let loaded = 0;
-
-    const fileHandle = await this.opfsRoot.getFileHandle(targetFileName, { create: true });
-    const writable = await fileHandle.createWritable();
-
-    const reader = response.body.getReader();
-    const startTime = Date.now();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        await writable.write(value);
-        loaded += value.length;
-
-        if (onProgress) {
-          const elapsedSec = (Date.now() - startTime) / 1000;
-          const speedBps = elapsedSec > 0 ? loaded / elapsedSec : 0;
-          onProgress({
-            loaded,
-            total,
-            percent: total > 0 ? Math.round((loaded / total) * 100) : 0,
-            speed: speedBps
-          });
+      xhr.onprogress = (event) => {
+        if (onProgress && event.lengthComputable) {
+          const loaded = event.loaded;
+          const total = event.total;
+          const percent = Math.round((loaded / total) * 100);
+          onProgress({ loaded, total, percent });
         }
-      }
-      await writable.close();
-      return await fileHandle.getFile();
-    } catch (err) {
-      await writable.abort();
-      // 清除未完成的檔案
-      try {
-        await this.opfsRoot.removeEntry(targetFileName);
-      } catch (e) {}
-      throw err;
-    }
+      };
+
+      xhr.onload = async () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const blob = xhr.response;
+          try {
+            await this.saveFile(targetFileName, blob);
+            resolve(blob);
+          } catch (err) {
+            reject(new Error('儲存至本機離線空間時失敗：' + err.message));
+          }
+        } else {
+          reject(new Error(`下載失敗：HTTP ${xhr.status} (請確認網址可公開下載且支援 CORS)`));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('網路連線失敗或該網址不允許跨網域 (CORS) 下載。建議在 Safari 直接點擊下載檔案後，再使用「選取本機圖資」匯入。'));
+      };
+
+      xhr.send();
+    });
   }
 
   /**
-   * 查詢瀏覽器儲存空間配額
+   * 查詢儲存空間配額
    */
   async getStorageQuota() {
     if (navigator.storage && navigator.storage.estimate) {
-      const estimate = await navigator.storage.estimate();
-      return {
-        usage: estimate.usage || 0,
-        quota: estimate.quota || 0,
-        percent: estimate.quota ? Math.round((estimate.usage / estimate.quota) * 100) : 0
-      };
+      try {
+        const estimate = await navigator.storage.estimate();
+        return {
+          usage: estimate.usage || 0,
+          quota: estimate.quota || 0,
+          percent: estimate.quota ? Math.round((estimate.usage / estimate.quota) * 100) : 0
+        };
+      } catch (e) {}
     }
     return { usage: 0, quota: 0, percent: 0 };
   }

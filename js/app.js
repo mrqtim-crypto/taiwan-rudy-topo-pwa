@@ -20,7 +20,12 @@ class RudyApp {
     this.setupEventListeners();
 
     // 初始化儲存與地圖
-    await this.storage.init();
+    try {
+      await this.storage.init();
+    } catch (e) {
+      console.warn('[Storage] Init warning:', e);
+    }
+
     await this.map.init();
 
     // 載入已儲存的離線圖資列表
@@ -112,21 +117,24 @@ class RudyApp {
     this.setupModalToggle(this.btnOpenGpx, this.modalGpx);
     this.setupModalToggle(this.btnOpenInfo, this.modalInfo);
 
-    // 本機圖資載入
+    // 本機圖資載入 (相容 iOS Safari 檔案 App)
     this.fileInputMap.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       try {
-        await this.storage.saveFileToOPFS(file.name, file);
-        await this.refreshOfflineMapsList();
+        // 先立即渲染在地圖上，帶給使用者最流暢的即時體驗
         await this.map.loadPmtilesFile(file);
         this.updateMapStatusBadge(file.name);
         this.closeAllModals();
-        alert(`已成功載入並快取魯地圖「${file.name}」！`);
+
+        // 背景非同步存入本機離線空間 (IndexedDB)
+        await this.storage.saveFile(file.name, file);
+        await this.refreshOfflineMapsList();
+        console.log(`[App] Offline map ${file.name} cached.`);
       } catch (err) {
         console.error(err);
-        alert('載入圖資錯誤：' + err.message);
+        alert('載入圖資發生錯誤：' + err.message);
       }
     });
 
@@ -143,7 +151,7 @@ class RudyApp {
       this.downloadProgressContainer.style.display = 'block';
 
       try {
-        const file = await this.storage.downloadAndStoreMap(
+        const blob = await this.storage.downloadAndStoreMap(
           url,
           fileName,
           (prog) => {
@@ -155,12 +163,12 @@ class RudyApp {
         );
 
         await this.refreshOfflineMapsList();
-        await this.map.loadPmtilesFile(file);
+        await this.map.loadPmtilesFile(blob);
         this.updateMapStatusBadge(fileName);
         alert(`下載完成！已套用離線魯地圖「${fileName}」`);
         this.closeAllModals();
       } catch (err) {
-        alert('下載失敗：' + err.message);
+        alert(err.message);
       } finally {
         this.btnStartDownload.disabled = false;
         this.downloadProgressContainer.style.display = 'none';
@@ -190,11 +198,11 @@ class RudyApp {
       for (const file of files) {
         const name = file.name.toLowerCase();
         if (name.endsWith('.pmtiles') || name.endsWith('.mbtiles')) {
-          await this.storage.saveFileToOPFS(file.name, file);
           await this.map.loadPmtilesFile(file);
           this.updateMapStatusBadge(file.name);
+          await this.storage.saveFile(file.name, file);
           await this.refreshOfflineMapsList();
-          alert(`已成功拖曳載入離線魯地圖「${file.name}」！`);
+          alert(`已成功載入離線魯地圖「${file.name}」！`);
         } else if (name.endsWith('.gpx') || name.endsWith('.kml')) {
           const trackItem = await this.gpx.loadFile(file);
           this.map.addGpxTrack(trackItem);
@@ -300,7 +308,7 @@ class RudyApp {
 
     if (list.length === 0) {
       this.offlineMapsList.innerHTML = `
-        <div class="empty-hint">尚未載入魯地圖 PMTiles。<br/>請點擊上方按鈕選取本地魯地圖檔案，或透過下載精靈線上下載。</div>
+        <div class="empty-hint">尚未儲存離線魯地圖。<br/>請點擊上方按鈕選取本機 PMTiles 圖資，或透過下方推薦來源下載。</div>
       `;
     } else {
       list.forEach((item) => {
@@ -319,8 +327,8 @@ class RudyApp {
         `;
 
         el.querySelector('.btn-load-map').addEventListener('click', async () => {
-          const file = await this.storage.getFileFromOPFS(item.name);
-          await this.map.loadPmtilesFile(file);
+          const blob = await this.storage.getFile(item.name);
+          await this.map.loadPmtilesFile(blob);
           this.updateMapStatusBadge(item.name);
           this.closeAllModals();
         });
@@ -340,7 +348,7 @@ class RudyApp {
     if (quota.quota > 0) {
       const usedMb = (quota.usage / (1024 * 1024)).toFixed(0);
       const totalMb = (quota.quota / (1024 * 1024)).toFixed(0);
-      this.storageQuotaText.textContent = `本機離線空間已使用：${usedMb} MB / 可用空間：${totalMb} MB`;
+      this.storageQuotaText.textContent = `本機離線空間已使用：${usedMb} MB / 可用上限：${totalMb} MB`;
     }
   }
 

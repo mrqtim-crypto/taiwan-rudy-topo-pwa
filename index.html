@@ -99,15 +99,15 @@
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
-        <!-- 匯入本地圖資 -->
+        <!-- 匯入本地圖資 (相容 iOS Safari 檔案 App) -->
         <div class="section-box">
           <div class="section-title">載入本機圖資檔 (PMTiles / MBTiles)</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            支援直接選取或拖曳您手機/電腦中的魯地圖 PMTiles 向量圖資，檔案將自動儲存於本機離線空間。
+            支援直接選取手機「檔案 (Files)」App 或電腦中的魯地圖 PMTiles 圖資，檔案將自動離線快取於手機中。
           </p>
-          <label class="btn-outline" style="cursor:pointer;text-align:center;">
-            <span>選取本機 PMTiles 圖資</span>
-            <input type="file" id="file-input-map" accept=".pmtiles,.mbtiles" style="display:none;">
+          <label class="btn-primary" style="cursor:pointer;text-align:center;width:100%;">
+            <span>📁 選取本機 PMTiles 圖資檔案</span>
+            <input type="file" id="file-input-map" accept=".pmtiles,.mbtiles,application/octet-stream,*/*" style="display:none;">
           </label>
         </div>
 
@@ -115,16 +115,29 @@
         <div class="section-box">
           <div class="section-title">線上圖資下載精靈</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            輸入魯地圖 PMTiles 發佈網址，系統將透過瀏覽器背景流式下載並寫入本地離線空間：
+            輸入魯地圖 PMTiles 發佈網址（需支援 CORS 跨域下載）：
           </p>
-          <input type="text" class="input-text" id="input-download-url" placeholder="https://.../taiwan_topo.pmtiles" value="https://demotiles.maplibre.org/tiles/tiles.json">
-          <button class="btn-primary" id="btn-start-download">開始線上下載並快取</button>
+          <input type="text" class="input-text" id="input-download-url" placeholder="https://.../taiwan_topo.pmtiles" value="">
+          <button class="btn-outline" id="btn-start-download">開始線上下載並快取</button>
           
           <div id="download-progress-container" style="display:none;">
             <div class="progress-bar-bg">
               <div class="progress-bar-fill" id="download-progress-bar"></div>
             </div>
             <div id="download-progress-text" style="font-size:11px;color:var(--accent);margin-top:4px;">0%</div>
+          </div>
+        </div>
+
+        <!-- iOS 推薦下載說明 -->
+        <div class="section-box" style="border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.05);">
+          <div class="section-title" style="color:#38BDF8;">🍏 iOS iPhone 下載技巧</div>
+          <p style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
+            因 iOS Safari 安全機制限制跨網域下載大檔，建議先在 Safari 開啟台灣魯地圖社群網站下載 <code>.pmtiles</code> 至手機的「檔案」App，再點擊上方「選取本機 PMTiles 圖資」即可秒速載入！
+          </p>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <a href="https://rudy.tw" target="_blank" rel="noopener noreferrer" class="btn-outline" style="font-size:11px;padding:6px 10px;text-align:center;flex:1;">
+              前往 Happyman 魯地圖官網
+            </a>
           </div>
         </div>
 
