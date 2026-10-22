@@ -26,11 +26,11 @@
   <!-- 全螢幕地圖 -->
   <div id="map"></div>
 
-  <!-- 頂部狀態列 (座標、海拔、TWD97、離線狀態) -->
+  <!-- 頂部精簡狀態列 (TWD97 坐標、經緯度、海拔、圖資狀態) -->
   <header class="top-status-bar">
     <div class="status-left">
       <span class="status-badge" id="status-mode">備援底圖模式</span>
-      <span class="status-coord-text" id="status-coord">等待 GPS 定位訊號...</span>
+      <span class="status-coord-text" id="status-coord">正在搜尋 GPS 定位訊號...</span>
     </div>
     <div class="status-right">
       <span class="status-ele-text" id="status-ele">-- m</span>
@@ -39,59 +39,54 @@
 
   <!-- 右側懸浮工具列 -->
   <nav class="side-tool-bar">
-    <!-- GPS 定位與跟隨按鈕 -->
-    <button class="fab-btn" id="btn-locate" title="開啟 GPS 定位 / 跟隨模式">
+    <!-- 回到目前位置 / 跟隨定位按鈕 -->
+    <button class="fab-btn" id="btn-locate" title="移動到目前位置 / 開啟跟隨">
       <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 8a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4m8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06M12 19a7 7 0 0 1-7-7a7 7 0 0 1 7-7a7 7 0 0 1 7 7a7 7 0 0 1-7 7Z"/></svg>
     </button>
     <!-- 圖資管理按鈕 -->
     <button class="fab-btn" id="btn-open-maps" title="離線魯地圖管理與下載">
       <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="m15 21l-6-2.1l-4.65 1.8q-.5.2-.925-.088T3 19.75V5.6q0-.325.188-.587T3.7 4.65L9 2.85l6 2.1l4.65-1.8q.5-.2.925.088T21 4.1v14.15q0 .325-.187.588t-.513.362L15 21Zm-5-3.15V5.5l-4-1.4v12.35l4 1.4Zm2 0l4-1.4V4.1l-4 1.4v12.35Z"/></svg>
     </button>
-    <!-- GPX 軌跡管理按鈕 -->
-    <button class="fab-btn" id="btn-open-gpx" title="GPX 軌跡與航點匯入">
+    <!-- GPX 匯入與查看 (單純查看路線) -->
+    <button class="fab-btn" id="btn-open-gpx" title="載入外部 GPX 路線對照">
       <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2s-2 .9-2 2s.9 2 2 2M9.8 8.9L7 23h2.1l1.8-8l2.1 2v6h2v-7.5l-2.1-2l.6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1c-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7Z"/></svg>
     </button>
-    <!-- 離線指南與說明按鈕 -->
-    <button class="fab-btn" id="btn-open-info" title="離線使用手冊與 PWA 安裝">
+    <!-- 離線手冊與說明 -->
+    <button class="fab-btn" id="btn-open-info" title="離線使用手冊">
       <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11 9h2V7h-2m1 13c-4.41 0-8-3.59-8-8s3.59-8 8-8s8 3.59 8 8s-3.59 8-8 8m0-18A10 10 0 0 0 2 12a10 10 0 0 0 10 10a10 10 0 0 0 10-10A10 10 0 0 0 12 2m-1 15h2v-6h-2v6Z"/></svg>
     </button>
   </nav>
 
-  <!-- 底部登山 HUD 儀表板 -->
-  <footer class="bottom-hud">
-    <div class="hud-stats-grid">
-      <div class="hud-stat-box">
-        <span class="label">時間</span>
-        <span class="val" id="hud-time">00:00:00</span>
+  <!-- 點擊地圖路線 / 地標時跳出的底部詳細資訊卡 -->
+  <div class="route-info-card" id="route-info-card" style="display:none;">
+    <div class="route-card-header">
+      <div class="route-card-title-group">
+        <span class="route-type-badge" id="route-type-badge">登山步道</span>
+        <h3 class="route-title" id="route-title">路線名稱</h3>
       </div>
-      <div class="hud-stat-box">
-        <span class="label">里程</span>
-        <span class="val highlight" id="hud-dist">0.00 km</span>
+      <button class="btn-close-card" id="btn-close-route-card">&times;</button>
+    </div>
+    <div class="route-card-body">
+      <div class="route-detail-row">
+        <span class="route-detail-label">📍 與您目前位置距離</span>
+        <span class="route-detail-val highlight" id="route-dist">計算中...</span>
       </div>
-      <div class="hud-stat-box">
-        <span class="label">爬升</span>
-        <span class="val highlight" id="hud-ascent">+0 m</span>
-      </div>
-      <div class="hud-stat-box">
-        <span class="label">海拔</span>
-        <span class="val" id="hud-ele">-- m</span>
-      </div>
-      <div class="hud-stat-box">
-        <span class="label">速度</span>
-        <span class="val" id="hud-speed">0.0 km/h</span>
+      <div class="route-detail-row" id="route-extra-row">
+        <span class="route-detail-label">⛰️ 路線特性 / 備註</span>
+        <span class="route-detail-val" id="route-extra">山徑路段</span>
       </div>
     </div>
-    <div class="hud-actions">
-      <button class="btn-record" id="btn-record-toggle">
-        <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10a10 10 0 0 0 10-10A10 10 0 0 0 12 2m0 2a8 8 0 0 1 8 8a8 8 0 0 1-8 8a8 8 0 0 1-8-8a8 8 0 0 1 8-8m0 4a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z"/></svg>
-        <span>開始記錄軌跡</span>
-      </button>
-      <button class="btn-record-stop" id="btn-record-stop">
-        <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M18 18H6V6h12v12Z"/></svg>
-        <span>結束並匯出 GPX</span>
-      </button>
+  </div>
+
+  <!-- 底部精簡定位膠囊 (無多餘按鈕，只顯示當前方位與 GPS 精度) -->
+  <div class="bottom-position-pill">
+    <div class="pill-dot"></div>
+    <div class="pill-content">
+      <span id="pill-gps-status">GPS 定位運作中</span>
+      <span class="pill-divider">&bull;</span>
+      <span id="pill-gps-accuracy">精度 ±--m</span>
     </div>
-  </footer>
+  </div>
 
   <!-- 彈窗 1：圖資管理與魯地圖線上下載 -->
   <div class="modal-overlay" id="modal-maps">
@@ -108,7 +103,7 @@
         <div class="section-box">
           <div class="section-title">載入本機圖資檔 (PMTiles / MBTiles)</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            支援直接選取或拖曳您電腦/手機中已下載的魯地圖 PMTiles 向量圖資，檔案將自動儲存於本機離線空間。
+            支援直接選取或拖曳您手機/電腦中的魯地圖 PMTiles 向量圖資，檔案將自動儲存於本機離線空間。
           </p>
           <label class="btn-outline" style="cursor:pointer;text-align:center;">
             <span>選取本機 PMTiles 圖資</span>
@@ -120,7 +115,7 @@
         <div class="section-box">
           <div class="section-title">線上圖資下載精靈</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            輸入魯地圖 PMTiles 線上發佈網址，系統將透過瀏覽器背景流式下載並寫入本地離線空間：
+            輸入魯地圖 PMTiles 發佈網址，系統將透過瀏覽器背景流式下載並寫入本地離線空間：
           </p>
           <input type="text" class="input-text" id="input-download-url" placeholder="https://.../taiwan_topo.pmtiles" value="https://demotiles.maplibre.org/tiles/tiles.json">
           <button class="btn-primary" id="btn-start-download">開始線上下載並快取</button>
@@ -145,62 +140,60 @@
     </div>
   </div>
 
-  <!-- 彈窗 2：GPX / KML 軌跡管理 -->
+  <!-- 彈窗 2：GPX / KML 軌跡路線查看 -->
   <div class="modal-overlay" id="modal-gpx">
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-title">
           <svg class="icon" style="width:20px;height:20px;" viewBox="0 0 24 24"><path fill="currentColor" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2s-2 .9-2 2s.9 2 2 2M9.8 8.9L7 23h2.1l1.8-8l2.1 2v6h2v-7.5l-2.1-2l.6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1c-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7Z"/></svg>
-          GPX 登山軌跡與航點套疊
+          GPX 路線套疊與查閱
         </div>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <label class="btn-primary" style="cursor:pointer;text-align:center;">
-          <span>匯入 GPX / KML 檔案 (可多選)</span>
+          <span>載入 GPX / KML 路線檔案</span>
           <input type="file" id="file-input-gpx" accept=".gpx,.kml" multiple style="display:none;">
         </label>
         <p style="font-size:12px;color:var(--text-secondary);text-align:center;">
-          亦可將 GPX 檔案直接拖曳至視窗任意位置立即解析！
+          載入後可在地圖上查看登山路線走向與航點。
         </p>
         <div class="section-box">
-          <div class="section-title">已載入之登山軌跡列表</div>
+          <div class="section-title">已載入之登山路線</div>
           <div id="gpx-tracks-list">
-            <div class="empty-hint">尚未載入任何軌跡</div>
+            <div class="empty-hint">尚未載入任何路線</div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 彈窗 3：說明與 PWA 離線安裝指南 -->
+  <!-- 彈窗 3：說明與操作指引 -->
   <div class="modal-overlay" id="modal-info">
     <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">台灣離線魯地圖軟體說明</div>
+        <div class="modal-title">台灣離線魯地圖使用說明</div>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="section-box">
-          <div class="section-title">關於魯地圖 (Taiwan TOPO / Rudy TOPO)</div>
+          <div class="section-title">💡 如何查看周邊路線？</div>
           <p style="font-size:13px;color:var(--text-secondary);">
-            魯地圖是台灣登山界最受歡迎的開放向量地圖，以 OpenStreetMap 社群登山路網、航跡與精密等高線繪製而成。本軟體專為戶外離線環境打造，具備零網路向量渲染能力。
+            在地圖上<strong>直接點選任一條山徑、登山步道、林道或山峰三角點</strong>，底部會立即顯示該路線名稱，並自動計算該路線<strong>距離您目前位置有多少公尺</strong>！
           </p>
         </div>
 
         <div class="section-box">
-          <div class="section-title">📱 如何在手機上「離線安裝 (PWA)」</div>
-          <ul style="font-size:12px;color:var(--text-secondary);padding-left:18px;display:flex;flex-direction:column;gap:6px;">
-            <li><strong>iPhone (Safari)</strong>：點擊下方分享按鈕（Share）➔ 選擇「加入主畫面 (Add to Home Screen)」。</li>
-            <li><strong>Android (Chrome)</strong>：點擊右上角選單 ➔ 選擇「安裝應用程式」或「加到主螢幕」。</li>
-            <li><strong>筆電 / 桌面電腦</strong>：點擊瀏覽器網址列右側的「安裝」圖示，即可作為獨立視窗桌面軟體運行。</li>
-          </ul>
+          <div class="section-title">🎯 定位與跟隨模式</div>
+          <p style="font-size:12px;color:var(--text-secondary);">
+            點擊右側工具列的 <strong>GPS 準心按鈕</strong>，地圖會立即自動平移至您目前的所在位置。再次點擊可切換持續跟隨模式。
+          </p>
         </div>
 
         <div class="section-box">
-          <div class="section-title">🗺️ 座標系統與登山安全</div>
+          <div class="section-title">🗺️ TWD97 坐標與登山通報</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            頂部狀態列會自動換算 <strong>WGS84 經緯度</strong> 與台灣搜救通報最常用的 <strong>TWD97 二度分帶座標</strong>，便於山難通報或對照紙本魯地圖。
+            頂部狀態列會將當前經緯度換算為台灣搜救最通用的 <strong>TWD97 二度分帶座標</strong>（例如：<code>278142, 2670119</code>），方便對照紙本地圖或緊急通報。
           </p>
         </div>
       </div>

@@ -13,7 +13,9 @@ export class RudyMap {
 
     // GPS 標記
     this.gpsMarker = null;
-    this.gpsAccuracyCircle = null;
+
+    // 路線點擊回呼
+    this.onFeatureSelected = null;
 
     // 狀態
     this.isOfflineMode = false;
@@ -23,41 +25,37 @@ export class RudyMap {
    * 初始化地圖
    */
   async init() {
-    // 註冊 PMTiles 通訊協定
     if (window.pmtiles && window.maplibregl) {
       this.pmtilesProtocol = new window.pmtiles.Protocol();
       window.maplibregl.addProtocol('pmtiles', this.pmtilesProtocol.tile);
       console.log('[Map] PMTiles protocol registered successfully.');
-    } else {
-      console.error('[Map] MapLibre or PMTiles library not loaded.');
     }
 
-    // 建立地圖 (預設中心設為台灣中心/合歡山玉山區域)
     this.map = new window.maplibregl.Map({
       container: this.containerId,
       style: defaultOnlineStyle,
-      center: [120.957, 23.8], // 台灣中心
+      center: [120.957, 23.8], // 台灣地理中心
       zoom: 8.5,
       minZoom: 6,
       maxZoom: 18,
       attributionControl: false
     });
 
-    // 導航控制 (縮放、旋轉指南針)
     this.map.addControl(new window.maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     this.map.addControl(new window.maplibregl.ScaleControl({ maxWidth: 150, unit: 'metric' }), 'bottom-left');
 
     return new Promise((resolve) => {
       this.map.on('load', () => {
         this.setupGpsLayers();
+        this.setupHighlightLayers();
+        this.setupClickListeners();
         resolve();
       });
     });
   }
 
   /**
-   * 載入離線魯地圖 PMTiles File 物件
-   * @param {File} file 
+   * 載入離線魯地圖 PMTiles
    */
   async loadPmtilesFile(file) {
     if (!this.pmtilesProtocol) {
@@ -72,57 +70,166 @@ export class RudyMap {
     const sourceId = 'taiwan-rudy-vector';
     const rudyStyle = createRudyTopoStyle(sourceId, sourceUrl);
 
-    // 切換地圖樣式為魯地圖向量風格
     this.map.setStyle(rudyStyle);
     this.currentOfflineFileName = file.name;
     this.isOfflineMode = true;
 
-    // 等待 style 載入後重新建立 GPS 與軌跡圖層
     this.map.once('style.load', () => {
       this.setupGpsLayers();
-      console.log('[Map] Rudy TOPO PMTiles loaded successfully:', file.name);
+      this.setupHighlightLayers();
+      this.setupClickListeners();
+      console.log('[Map] Rudy TOPO loaded:', file.name);
     });
   }
 
   /**
-   * 建立 GPS 即時航跡與定位圖層
+   * 建立高亮選取圖層
    */
-  setupGpsLayers() {
-    if (!this.map.getSource('gps-live-track')) {
-      this.map.addSource('gps-live-track', {
+  setupHighlightLayers() {
+    if (!this.map.getSource('selected-highlight-source')) {
+      this.map.addSource('selected-highlight-source', {
         type: 'geojson',
         data: {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: []
-          }
+          type: 'FeatureCollection',
+          features: []
         }
       });
 
+      // 被選取線條高亮 (外光暈)
       this.map.addLayer({
-        id: 'gps-live-track-casing',
+        id: 'selected-highlight-line-glow',
         type: 'line',
-        source: 'gps-live-track',
+        source: 'selected-highlight-source',
+        filter: ['==', '$type', 'LineString'],
+        paint: {
+          'line-color': '#38BDF8',
+          'line-width': 8,
+          'line-opacity': 0.7,
+          'line-blur': 2
+        }
+      });
+
+      // 被選取線條核心
+      this.map.addLayer({
+        id: 'selected-highlight-line',
+        type: 'line',
+        source: 'selected-highlight-source',
+        filter: ['==', '$type', 'LineString'],
         paint: {
           'line-color': '#FFFFFF',
-          'line-width': 6,
-          'line-opacity': 0.8
+          'line-width': 3
         }
       });
 
+      // 被選取點位高亮 (光環)
       this.map.addLayer({
-        id: 'gps-live-track-line',
-        type: 'line',
-        source: 'gps-live-track',
+        id: 'selected-highlight-point',
+        type: 'circle',
+        source: 'selected-highlight-source',
+        filter: ['==', '$type', 'Point'],
         paint: {
-          'line-color': '#EC4899', // 螢光粉紅，極易辨識
-          'line-width': 4
+          'circle-radius': 12,
+          'circle-color': '#38BDF8',
+          'circle-opacity': 0.5,
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-width': 3
         }
       });
     }
+  }
 
-    // 準備 GPS 標記元素
+  /**
+   * 設定路線與地標點擊事件監聽
+   */
+  setupClickListeners() {
+    const clickableLayers = [
+      'trail-path',
+      'forestry-track',
+      'roads',
+      'mountain-peak-point',
+      'mountain-peak-label',
+      'poi-camp-hut',
+      'poi-camp-hut-label'
+    ];
+
+    // 滑鼠移入手勢指標
+    clickableLayers.forEach((layerId) => {
+      if (this.map.getLayer(layerId)) {
+        this.map.on('mouseenter', layerId, () => {
+          this.map.getCanvas().style.cursor = 'pointer';
+        });
+        this.map.on('mouseleave', layerId, () => {
+          this.map.getCanvas().style.cursor = '';
+        });
+      }
+    });
+
+    // 點擊事件
+    this.map.on('click', (e) => {
+      // 查詢點擊位置附近的圖層 (包含容差緩衝)
+      const bbox = [
+        [e.point.x - 6, e.point.y - 6],
+        [e.point.x + 6, e.point.y + 6]
+      ];
+
+      // 找出存在的圖層
+      const activeClickable = clickableLayers.filter((l) => this.map.getLayer(l));
+      // 同時包含任何自訂載入的 GPX 路線
+      const allLayers = this.map.getStyle().layers || [];
+      const gpxLineLayers = allLayers.filter((l) => l.id.startsWith('gpx-line-')).map((l) => l.id);
+      const queryLayers = [...activeClickable, ...gpxLineLayers];
+
+      const features = this.map.queryRenderedFeatures(bbox, {
+        layers: queryLayers.length > 0 ? queryLayers : undefined
+      });
+
+      if (features.length > 0) {
+        const topFeature = features[0];
+        this.highlightFeature(topFeature);
+
+        if (this.onFeatureSelected) {
+          this.onFeatureSelected(topFeature, [e.lngLat.lng, e.lngLat.lat]);
+        }
+      } else {
+        // 點擊空白處清除選取
+        this.clearHighlight();
+        if (this.onFeatureSelected) {
+          this.onFeatureSelected(null, null);
+        }
+      }
+    });
+  }
+
+  /**
+   * 高亮指定 Feature
+   */
+  highlightFeature(feature) {
+    const source = this.map.getSource('selected-highlight-source');
+    if (source && feature.geometry) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: [feature]
+      });
+    }
+  }
+
+  /**
+   * 清除高亮
+   */
+  clearHighlight() {
+    const source = this.map.getSource('selected-highlight-source');
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    }
+  }
+
+  /**
+   * 建立 GPS 即時標記
+   */
+  setupGpsLayers() {
     if (!this.gpsMarker) {
       const el = document.createElement('div');
       el.className = 'gps-current-marker';
@@ -135,7 +242,7 @@ export class RudyMap {
   }
 
   /**
-   * 更新 GPS 目前位置與航跡
+   * 更新 GPS 目前位置
    */
   updateGpsLocation(point, shouldPan = false) {
     if (!point || !this.map) return;
@@ -146,30 +253,14 @@ export class RudyMap {
     if (shouldPan) {
       this.map.easeTo({
         center: coords,
-        zoom: Math.max(this.map.getZoom(), 15),
+        zoom: Math.max(this.map.getZoom(), 15.5),
         duration: 800
       });
     }
   }
 
   /**
-   * 更新即時記錄航跡線
-   */
-  updateLiveTrackGeometry(coordinates) {
-    const source = this.map.getSource('gps-live-track');
-    if (source) {
-      source.setData({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: coordinates
-        }
-      });
-    }
-  }
-
-  /**
-   * 新增或更新 GPX 軌跡圖層
+   * 載入 GPX 軌跡供背景參考
    */
   addGpxTrack(trackItem) {
     const sourceId = `gpx-source-${trackItem.id}`;
@@ -184,7 +275,6 @@ export class RudyMap {
         data: trackItem.geojson
       });
 
-      // 外框光暈
       this.map.addLayer({
         id: casingLayerId,
         type: 'line',
@@ -197,7 +287,6 @@ export class RudyMap {
         }
       });
 
-      // 主線
       this.map.addLayer({
         id: lineLayerId,
         type: 'line',
@@ -209,7 +298,6 @@ export class RudyMap {
         }
       });
 
-      // 航點圓點
       this.map.addLayer({
         id: wptLayerId,
         type: 'circle',
@@ -223,7 +311,6 @@ export class RudyMap {
         }
       });
 
-      // 航點文字標籤
       this.map.addLayer({
         id: wptLabelId,
         type: 'symbol',
@@ -242,25 +329,6 @@ export class RudyMap {
           'text-halo-width': 2
         }
       });
-
-      // 點擊航點彈出資訊
-      this.map.on('click', wptLayerId, (e) => {
-        const feat = e.features[0];
-        const props = feat.properties;
-        const coords = feat.geometry.coordinates.slice();
-
-        new window.maplibregl.Popup()
-          .setLngLat(coords)
-          .setHTML(`
-            <div style="font-size: 13px; line-height: 1.5; color: #111;">
-              <strong>${props.name || '航點'}</strong><br/>
-              ${props.ele ? `標高：${props.ele} m<br/>` : ''}
-              ${props.desc ? `說明：${props.desc}<br/>` : ''}
-              <span style="font-size: 11px; color: #666;">經緯度：${coords[1].toFixed(5)}, ${coords[0].toFixed(5)}</span>
-            </div>
-          `)
-          .addTo(this.map);
-      });
     }
 
     if (trackItem.bounds) {
@@ -268,50 +336,21 @@ export class RudyMap {
     }
   }
 
-  /**
-   * 移除 GPX 圖層
-   */
   removeGpxTrack(trackId) {
-    const sourceId = `gpx-source-${trackId}`;
     const layers = [
       `gpx-wpt-label-${trackId}`,
       `gpx-wpt-${trackId}`,
       `gpx-line-${trackId}`,
       `gpx-casing-${trackId}`
     ];
-
     layers.forEach((layerId) => {
-      if (this.map.getLayer(layerId)) {
-        this.map.removeLayer(layerId);
-      }
+      if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
     });
-
-    if (this.map.getSource(sourceId)) {
-      this.map.removeSource(sourceId);
+    if (this.map.getSource(`gpx-source-${trackId}`)) {
+      this.map.removeSource(`gpx-source-${trackId}`);
     }
   }
 
-  /**
-   * 設為或取消軌跡顯示
-   */
-  setTrackVisibility(trackId, visible) {
-    const visibility = visible ? 'visible' : 'none';
-    const layers = [
-      `gpx-wpt-label-${trackId}`,
-      `gpx-wpt-${trackId}`,
-      `gpx-line-${trackId}`,
-      `gpx-casing-${trackId}`
-    ];
-    layers.forEach((l) => {
-      if (this.map.getLayer(l)) {
-        this.map.setLayoutProperty(l, 'visibility', visibility);
-      }
-    });
-  }
-
-  /**
-   * 縮放至指定邊界
-   */
   fitBounds(bounds) {
     if (bounds && this.map) {
       this.map.fitBounds(bounds, { padding: 40, duration: 1000 });
@@ -319,8 +358,7 @@ export class RudyMap {
   }
 
   /**
-   * WGS84 轉 TWD97 (二度分帶投影，中央經線 121度)
-   * 台灣登山常需報 TWD97 6碼坐標給搜救隊或核對紙圖
+   * WGS84 經緯度轉 TWD97 (二度分帶投影)
    */
   static wgs84ToTwd97(lat, lng) {
     const a = 6378137.0;
