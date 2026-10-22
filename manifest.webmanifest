@@ -1,0 +1,19 @@
+{
+  "name": "台灣離線魯地圖 Taiwan Rudy TOPO",
+  "short_name": "魯地圖離線",
+  "description": "全台灣離線魯地圖向量地圖檢視、GPX 軌跡套疊與 GPS 登山定位記錄軟體",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B0F12",
+  "theme_color": "#141E18",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["navigation", "sports", "travel", "utilities"]
+}

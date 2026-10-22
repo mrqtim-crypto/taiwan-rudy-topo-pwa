@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Taiwan Rudy TOPO App" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>合歡山主峰步道 (Hehuan Main Peak)</name>
+    <desc>台灣百岳入門步道，海拔由 3160m 攀升至 3417m</desc>
+    <time>2026-10-22T08:00:00Z</time>
+  </metadata>
+  
+  <!-- 航點 -->
+  <wpt lat="24.1432" lon="121.2721">
+    <ele>3160</ele>
+    <name>合歡主峰登山口</name>
+    <desc>台14甲線 30.8K 處，設有解說牌</desc>
+  </wpt>
+  <wpt lat="24.1418" lon="121.2705">
+    <ele>3240</ele>
+    <name>第一觀景平台</name>
+    <desc>眺望奇萊連峰視野極佳</desc>
+  </wpt>
+  <wpt lat="24.1402" lon="121.2690">
+    <ele>3310</ele>
+    <name>公廁與太陽能休憩站</name>
+    <desc>舊軍事設施改建</desc>
+  </wpt>
+  <wpt lat="24.1388" lon="121.2715">
+    <ele>3417</ele>
+    <name>合歡山主峰三角點 (百岳 No.37)</name>
+    <desc>三等三角點 6388 號，標高 3417 公尺，360 度全景</desc>
+  </wpt>
+
+  <!-- 軌跡點 -->
+  <trk>
+    <name>合歡山主峰步道來回</name>
+    <trkseg>
+      <trkpt lat="24.14320" lon="121.27210"><ele>3160</ele><time>2026-10-22T08:00:00Z</time></trkpt>
+      <trkpt lat="24.14280" lon="121.27180"><ele>3185</ele><time>2026-10-22T08:05:00Z</time></trkpt>
+      <trkpt lat="24.14230" lon="121.27120"><ele>3215</ele><time>2026-10-22T08:12:00Z</time></trkpt>
+      <trkpt lat="24.14180" lon="121.27050"><ele>3240</ele><time>2026-10-22T08:18:00Z</time></trkpt>
+      <trkpt lat="24.14120" lon="121.26980"><ele>3275</ele><time>2026-10-22T08:25:00Z</time></trkpt>
+      <trkpt lat="24.14020" lon="121.26900"><ele>3310</ele><time>2026-10-22T08:35:00Z</time></trkpt>
+      <trkpt lat="24.13960" lon="121.26990"><ele>3350</ele><time>2026-10-22T08:45:00Z</time></trkpt>
+      <trkpt lat="24.13910" lon="121.27080"><ele>3390</ele><time>2026-10-22T08:52:00Z</time></trkpt>
+      <trkpt lat="24.13880" lon="121.27150"><ele>3417</ele><time>2026-10-22T09:00:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
