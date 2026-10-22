@@ -99,46 +99,62 @@
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
+        <!-- 台灣等高線離線圖資一鍵下載 (iOS 最佳化方案，零設定一鍵離線) -->
+        <div class="section-box" style="border-color: rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.05);">
+          <div class="section-title" style="color:var(--accent);">⚡ 台灣等高線離線地圖 一鍵下載</div>
+          <p style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
+            專為 iOS / Android 設計的離線快取精靈，點擊後自動將高精度等高線與山徑下載至手機，<strong>深山飛航模式無訊號依然能離線瀏覽！</strong>
+          </p>
+
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+            <button class="btn-primary btn-pack-download" data-pack="taiwan" style="justify-content:space-between;">
+              <span>🇹🇼 全台灣全境等高線離線包 (全島)</span>
+              <span style="font-size:11px;opacity:0.8;">~12 MB</span>
+            </button>
+            <button class="btn-outline btn-pack-download" data-pack="hehuan" style="justify-content:space-between;">
+              <span>🏔️ 合歡山群峰 / 奇萊連峰 / 能高越嶺</span>
+              <span style="font-size:11px;opacity:0.8;">高精度 ~8 MB</span>
+            </button>
+            <button class="btn-outline btn-pack-download" data-pack="yushan" style="justify-content:space-between;">
+              <span>⛰️ 玉山群峰 / 八通關古道</span>
+              <span style="font-size:11px;opacity:0.8;">高精度 ~8 MB</span>
+            </button>
+            <button class="btn-outline btn-pack-download" data-pack="xueshan" style="justify-content:space-between;">
+              <span>🌲 雪山群峰 / 聖稜線 / 武陵四秀</span>
+              <span style="font-size:11px;opacity:0.8;">高精度 ~8 MB</span>
+            </button>
+            <button class="btn-outline btn-pack-download" data-pack="current-view" style="justify-content:space-between;border-color:#38BDF8;color:#38BDF8;">
+              <span>📍 下載目前地圖螢幕所視山區</span>
+              <span style="font-size:11px;opacity:0.8;">自選範圍</span>
+            </button>
+          </div>
+
+          <!-- 一鍵下載進度條 -->
+          <div id="pack-progress-container" style="display:none;margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--accent);">
+              <span id="pack-progress-title">正在下載離線圖磚...</span>
+              <span id="pack-progress-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="pack-progress-bar"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+              <span id="pack-progress-detail" style="font-size:11px;color:var(--text-secondary);">已下載 0 / 0 張圖磚</span>
+              <button class="btn-sm btn-danger" id="btn-cancel-pack">取消下載</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 匯入本地圖資 (相容 iOS Safari 檔案 App) -->
         <div class="section-box">
-          <div class="section-title">載入本機圖資檔 (PMTiles / MBTiles)</div>
+          <div class="section-title">載入外部 PMTiles 向量圖資</div>
           <p style="font-size:12px;color:var(--text-secondary);">
-            支援直接選取手機「檔案 (Files)」App 或電腦中的魯地圖 PMTiles 圖資，檔案將自動離線快取於手機中。
+            若您手機「檔案」App 內已存有社群魯地圖 <code>.pmtiles</code>，可直接點擊選取載入：
           </p>
-          <label class="btn-primary" style="cursor:pointer;text-align:center;width:100%;">
+          <label class="btn-outline" style="cursor:pointer;text-align:center;width:100%;">
             <span>📁 選取本機 PMTiles 圖資檔案</span>
             <input type="file" id="file-input-map" accept=".pmtiles,.mbtiles,application/octet-stream,*/*" style="display:none;">
           </label>
-        </div>
-
-        <!-- 線上下載精靈 -->
-        <div class="section-box">
-          <div class="section-title">線上圖資下載精靈</div>
-          <p style="font-size:12px;color:var(--text-secondary);">
-            輸入魯地圖 PMTiles 發佈網址（需支援 CORS 跨域下載）：
-          </p>
-          <input type="text" class="input-text" id="input-download-url" placeholder="https://.../taiwan_topo.pmtiles" value="">
-          <button class="btn-outline" id="btn-start-download">開始線上下載並快取</button>
-          
-          <div id="download-progress-container" style="display:none;">
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" id="download-progress-bar"></div>
-            </div>
-            <div id="download-progress-text" style="font-size:11px;color:var(--accent);margin-top:4px;">0%</div>
-          </div>
-        </div>
-
-        <!-- iOS 推薦下載說明 -->
-        <div class="section-box" style="border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.05);">
-          <div class="section-title" style="color:#38BDF8;">🍏 iOS iPhone 下載技巧</div>
-          <p style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
-            因 iOS Safari 安全機制限制跨網域下載大檔，建議先在 Safari 開啟台灣魯地圖社群網站下載 <code>.pmtiles</code> 至手機的「檔案」App，再點擊上方「選取本機 PMTiles 圖資」即可秒速載入！
-          </p>
-          <div style="display:flex;gap:8px;margin-top:4px;">
-            <a href="https://rudy.tw" target="_blank" rel="noopener noreferrer" class="btn-outline" style="font-size:11px;padding:6px 10px;text-align:center;flex:1;">
-              前往 Happyman 魯地圖官網
-            </a>
-          </div>
         </div>
 
         <!-- 已儲存離線圖資列表 -->

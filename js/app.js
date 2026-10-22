@@ -2,6 +2,7 @@ import { RudyMap } from './map.js';
 import { StorageManager } from './storage-manager.js';
 import { GpxManager } from './gpx-manager.js';
 import { GpsTracker } from './gps-tracker.js';
+import { OfflineTileDownloader } from './offline-tile-downloader.js';
 
 class RudyApp {
   constructor() {
@@ -9,6 +10,7 @@ class RudyApp {
     this.storage = new StorageManager();
     this.gpx = new GpxManager();
     this.gps = new GpsTracker();
+    this.tileDownloader = new OfflineTileDownloader('taiwan-rudy-topo-v1.4.0');
 
     this.followGps = false;
     this.currentPos = null;
@@ -19,7 +21,6 @@ class RudyApp {
     this.bindDomElements();
     this.setupEventListeners();
 
-    // 初始化儲存與地圖
     try {
       await this.storage.init();
     } catch (e) {
@@ -27,18 +28,13 @@ class RudyApp {
     }
 
     await this.map.init();
-
-    // 載入已儲存的離線圖資列表
     await this.refreshOfflineMapsList();
 
-    // 啟動 GPS 監聽回呼與自動定位
     this.setupGpsCallbacks();
     this.gps.startWatching();
-
-    // 綁定地圖路線點擊事件
     this.setupRouteInteraction();
 
-    console.log('[RudyApp] Initialized successfully in clean exploration mode.');
+    console.log('[RudyApp] Initialized with One-Click Offline Downloader.');
   }
 
   registerServiceWorker() {
@@ -80,14 +76,17 @@ class RudyApp {
     this.modalGpx = document.getElementById('modal-gpx');
     this.modalInfo = document.getElementById('modal-info');
 
-    // 圖資管理 DOM
+    // 一鍵下載離線圖磚 DOM
+    this.packProgressContainer = document.getElementById('pack-progress-container');
+    this.packProgressTitle = document.getElementById('pack-progress-title');
+    this.packProgressPercent = document.getElementById('pack-progress-percent');
+    this.packProgressBar = document.getElementById('pack-progress-bar');
+    this.packProgressDetail = document.getElementById('pack-progress-detail');
+    this.btnCancelPack = document.getElementById('btn-cancel-pack');
+
+    // PMTiles 本地檔案上傳 DOM
     this.fileInputMap = document.getElementById('file-input-map');
     this.offlineMapsList = document.getElementById('offline-maps-list');
-    this.inputDownloadUrl = document.getElementById('input-download-url');
-    this.btnStartDownload = document.getElementById('btn-start-download');
-    this.downloadProgressContainer = document.getElementById('download-progress-container');
-    this.downloadProgressBar = document.getElementById('download-progress-bar');
-    this.downloadProgressText = document.getElementById('download-progress-text');
     this.storageQuotaText = document.getElementById('storage-quota-text');
 
     // GPX 相關 DOM
@@ -117,61 +116,36 @@ class RudyApp {
     this.setupModalToggle(this.btnOpenGpx, this.modalGpx);
     this.setupModalToggle(this.btnOpenInfo, this.modalInfo);
 
-    // 本機圖資載入 (相容 iOS Safari 檔案 App)
+    // 【一鍵離線圖磚下載】按鈕群監聽
+    document.querySelectorAll('.btn-pack-download').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const packType = e.currentTarget.getAttribute('data-pack');
+        await this.handlePackDownload(packType);
+      });
+    });
+
+    // 取消下載
+    this.btnCancelPack.addEventListener('click', () => {
+      this.tileDownloader.cancel();
+      this.packProgressContainer.style.display = 'none';
+      alert('已取消下載');
+    });
+
+    // 本機 PMTiles 圖資載入 (相容 iOS Safari 檔案 App)
     this.fileInputMap.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       try {
-        // 先立即渲染在地圖上，帶給使用者最流暢的即時體驗
         await this.map.loadPmtilesFile(file);
         this.updateMapStatusBadge(file.name);
         this.closeAllModals();
 
-        // 背景非同步存入本機離線空間 (IndexedDB)
         await this.storage.saveFile(file.name, file);
         await this.refreshOfflineMapsList();
-        console.log(`[App] Offline map ${file.name} cached.`);
       } catch (err) {
         console.error(err);
         alert('載入圖資發生錯誤：' + err.message);
-      }
-    });
-
-    // 線上下載圖資
-    this.btnStartDownload.addEventListener('click', async () => {
-      const url = this.inputDownloadUrl.value.trim();
-      if (!url) {
-        alert('請輸入圖資 PMTiles 下載網址');
-        return;
-      }
-
-      const fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `rudy_topo_${Date.now()}.pmtiles`;
-      this.btnStartDownload.disabled = true;
-      this.downloadProgressContainer.style.display = 'block';
-
-      try {
-        const blob = await this.storage.downloadAndStoreMap(
-          url,
-          fileName,
-          (prog) => {
-            this.downloadProgressBar.style.width = `${prog.percent}%`;
-            const loadedMb = (prog.loaded / (1024 * 1024)).toFixed(1);
-            const totalMb = prog.total > 0 ? (prog.total / (1024 * 1024)).toFixed(1) : '?';
-            this.downloadProgressText.textContent = `${prog.percent}% (${loadedMb} MB / ${totalMb} MB)`;
-          }
-        );
-
-        await this.refreshOfflineMapsList();
-        await this.map.loadPmtilesFile(blob);
-        this.updateMapStatusBadge(fileName);
-        alert(`下載完成！已套用離線魯地圖「${fileName}」`);
-        this.closeAllModals();
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        this.btnStartDownload.disabled = false;
-        this.downloadProgressContainer.style.display = 'none';
       }
     });
 
@@ -212,27 +186,92 @@ class RudyApp {
     });
   }
 
+  /**
+   * 處理台灣區域離線圖磚下載
+   */
+  async handlePackDownload(packType) {
+    let bounds = null;
+    let zooms = [11, 12, 13, 14];
+    let title = '台灣山區離線等高線';
+
+    if (packType === 'taiwan') {
+      bounds = [[119.8, 21.8], [122.1, 25.3]];
+      zooms = [8, 9, 10, 11]; // 全台覆蓋 Zoom 8~11，輕量化約 150 張圖磚
+      title = '全台灣全境等高線離線包';
+    } else if (packType === 'hehuan') {
+      bounds = [[121.15, 23.95], [121.40, 24.20]];
+      zooms = [11, 12, 13, 14];
+      title = '合歡群峰/奇萊連峰/能高越嶺 (高精度)';
+    } else if (packType === 'yushan') {
+      bounds = [[120.85, 23.40], [121.10, 23.60]];
+      zooms = [11, 12, 13, 14];
+      title = '玉山群峰/八通關古道 (高精度)';
+    } else if (packType === 'xueshan') {
+      bounds = [[121.15, 24.35], [121.38, 24.55]];
+      zooms = [11, 12, 13, 14];
+      title = '雪山群峰/聖稜線/武陵四秀 (高精度)';
+    } else if (packType === 'current-view') {
+      const mapBounds = this.map.map.getBounds();
+      bounds = [
+        [mapBounds.getWest(), mapBounds.getSouth()],
+        [mapBounds.getEast(), mapBounds.getNorth()]
+      ];
+      const curZoom = Math.floor(this.map.map.getZoom());
+      zooms = [curZoom, Math.min(14, curZoom + 1), Math.min(14, curZoom + 2)];
+      title = '目前地圖螢幕所視山區';
+    }
+
+    const tileUrls = this.tileDownloader.getTileUrlsForBounds(bounds, zooms);
+
+    if (tileUrls.length === 0) {
+      alert('所選範圍無有效圖磚，請重新選擇。');
+      return;
+    }
+
+    if (tileUrls.length > 800) {
+      if (!confirm(`該範圍較大（約 ${tileUrls.length} 張圖磚），下載約需 30~60 秒，確定開始下載嗎？`)) {
+        return;
+      }
+    }
+
+    // 展開進度條
+    this.packProgressContainer.style.display = 'block';
+    this.packProgressTitle.textContent = `正在快取：${title}`;
+    this.packProgressBar.style.width = '0%';
+    this.packProgressPercent.textContent = '0%';
+    this.packProgressDetail.textContent = `準備下載 ${tileUrls.length} 張圖磚...`;
+
+    try {
+      await this.tileDownloader.downloadTiles(tileUrls, (prog) => {
+        this.packProgressBar.style.width = `${prog.percent}%`;
+        this.packProgressPercent.textContent = `${prog.percent}%`;
+        this.packProgressDetail.textContent = `已快取 ${prog.current} / ${prog.total} 張圖磚`;
+      });
+
+      this.packProgressContainer.style.display = 'none';
+      this.updateMapStatusBadge('已快取離線地圖');
+      alert(`🎉「${title}」下載完成！\n該山區等高線與步道已永久快取於本機，離線無網路依然能正常使用！`);
+      this.closeAllModals();
+    } catch (err) {
+      alert('下載發生異常：' + err.message);
+      this.packProgressContainer.style.display = 'none';
+    }
+  }
+
   setupGpsCallbacks() {
     this.gps.onLocationUpdate = (pt) => {
       this.currentPos = pt;
       const twd = RudyMap.wgs84ToTwd97(pt.lat, pt.lng);
 
-      // 頂部狀態列
       this.domStatusCoord.textContent = `${twd.formatted} (${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)})`;
       this.domStatusEle.textContent = `${pt.ele} m`;
-
-      // 底部定位膠囊
       this.pillGpsStatus.textContent = 'GPS 訊號良好';
       this.pillGpsAccuracy.textContent = `精度 ±${pt.accuracy}m`;
 
-      // 地圖更新位置
       this.map.updateGpsLocation(pt, this.followGps);
     };
   }
 
-  /**
-   * 路線與地標點選互動邏輯
-   */
   setupRouteInteraction() {
     this.map.onFeatureSelected = (feature, clickCoord) => {
       if (!feature) {
@@ -243,7 +282,6 @@ class RudyApp {
       const props = feature.properties || {};
       const layerId = feature.layer ? feature.layer.id : '';
 
-      // 計算路線與目前 GPS 位置的直線距離
       let distanceText = '尚未取得 GPS 定位';
       if (this.currentPos && clickCoord) {
         const distMeters = this.haversineDistance(
@@ -262,7 +300,6 @@ class RudyApp {
         }
       }
 
-      // 判斷路線或地標類別
       let badgeText = '登山步道';
       let titleText = props.name || '登山山徑 (未命名)';
       let extraText = '山林路徑';
@@ -293,7 +330,6 @@ class RudyApp {
         extraText = '傳統登山路徑';
       }
 
-      // 更新卡片內容並顯示
       this.routeTypeBadge.textContent = badgeText;
       this.routeTitle.textContent = titleText;
       this.routeDist.textContent = distanceText;
@@ -308,7 +344,7 @@ class RudyApp {
 
     if (list.length === 0) {
       this.offlineMapsList.innerHTML = `
-        <div class="empty-hint">尚未儲存離線魯地圖。<br/>請點擊上方按鈕選取本機 PMTiles 圖資，或透過下方推薦來源下載。</div>
+        <div class="empty-hint">尚未載入本機 PMTiles 檔案。<br/>您可使用上方「一鍵下載」直接快取熱門百岳離線地圖！</div>
       `;
     } else {
       list.forEach((item) => {
@@ -321,7 +357,7 @@ class RudyApp {
             <div class="map-item-meta">${sizeMb} MB &bull; ${new Date(item.lastModified).toLocaleDateString('zh-TW')}</div>
           </div>
           <div class="map-item-actions">
-            <button class="btn-sm btn-primary btn-load-map">載入地圖</button>
+            <button class="btn-sm btn-primary btn-load-map">套用</button>
             <button class="btn-sm btn-danger btn-del-map">刪除</button>
           </div>
         `;
@@ -396,7 +432,7 @@ class RudyApp {
   }
 
   updateMapStatusBadge(name) {
-    this.domStatusMode.textContent = `魯地圖 (${name})`;
+    this.domStatusMode.textContent = `離線地圖 (${name})`;
     this.domStatusMode.classList.add('offline-active');
   }
 
