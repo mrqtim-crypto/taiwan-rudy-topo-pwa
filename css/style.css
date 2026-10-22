@@ -28,9 +28,13 @@ body, html {
   color: var(--text-primary);
   font-family: var(--font-family);
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
-/* 地圖全螢幕容器 */
+/* 地圖全螢幕容器 (啟用 iOS WebGL 硬體加速) */
 #map {
   position: absolute;
   top: 0;
@@ -38,6 +42,12 @@ body, html {
   width: 100%;
   height: 100%;
   z-index: 1;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+#map canvas {
+  touch-action: none;
 }
 
 /* 頂部狀態列 */

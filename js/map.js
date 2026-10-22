@@ -1,8 +1,14 @@
 /**
- * 地圖渲染控制器 (基於 MapLibre GL + PMTiles)
+ * 地圖渲染控制器 (針對台灣全島與 iOS 效能極致優化版)
  */
 
 import { createRudyTopoStyle, defaultOnlineStyle } from './topo-style.js';
+
+// 台灣全境邊界 (包含台澎金馬、綠島、蘭嶼)
+const TAIWAN_BOUNDS = [
+  [118.0, 21.3], // 西南角 (金門南方、南岬)
+  [122.5, 26.2]  // 東北角 (彭佳嶼、宜蘭外海)
+];
 
 export class RudyMap {
   constructor(containerId) {
@@ -22,27 +28,36 @@ export class RudyMap {
   }
 
   /**
-   * 初始化地圖
+   * 初始化地圖 (包含 iOS 流暢度專屬硬體加速調校)
    */
   async init() {
     if (window.pmtiles && window.maplibregl) {
       this.pmtilesProtocol = new window.pmtiles.Protocol();
       window.maplibregl.addProtocol('pmtiles', this.pmtilesProtocol.tile);
-      console.log('[Map] PMTiles protocol registered successfully.');
+      console.log('[Map] PMTiles protocol registered.');
     }
+
+    // 針對 iOS 螢幕與 GPU 負載優化：限制 pixelRatio 最高 2x (避免 3x Retina 發燙掉幀)
+    const optimizedPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
     this.map = new window.maplibregl.Map({
       container: this.containerId,
       style: defaultOnlineStyle,
-      center: [120.957, 23.8], // 台灣地理中心
+      center: [120.957, 23.8], // 台灣地理中心 (南投水里)
       zoom: 8.5,
-      minZoom: 6,
-      maxZoom: 18,
-      attributionControl: false
+      minZoom: 7,              // 鎖定全台灣視野
+      maxZoom: 17.5,           // 登山最詳盡級距
+      maxBounds: TAIWAN_BOUNDS,// 限制視野永遠不出台灣，零無效渲染
+      pixelRatio: optimizedPixelRatio,
+      maxTileCacheSize: 45,    // 嚴格控制記憶體，預防 iOS Safari Jetsam 閃退
+      touchPitch: false,       // 關閉雙指 3D 俯仰，省電且防誤觸
+      dragRotate: true,        // 保留旋轉支援方向導航
+      attributionControl: false,
+      trackResize: true
     });
 
-    this.map.addControl(new window.maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    this.map.addControl(new window.maplibregl.ScaleControl({ maxWidth: 150, unit: 'metric' }), 'bottom-left');
+    this.map.addControl(new window.maplibregl.NavigationControl({ showCompass: true, showZoom: false }), 'top-right');
+    this.map.addControl(new window.maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
 
     return new Promise((resolve) => {
       this.map.on('load', () => {
@@ -57,28 +72,29 @@ export class RudyMap {
   /**
    * 載入離線魯地圖 PMTiles
    */
-  async loadPmtilesFile(file) {
+  async loadPmtilesFile(fileOrBlob) {
     if (!this.pmtilesProtocol) {
       throw new Error('PMTiles 通訊協定未初始化');
     }
 
-    const fileSource = new window.pmtiles.FileSource(file);
+    const fileSource = new window.pmtiles.FileSource(fileOrBlob);
     const p = new window.pmtiles.PMTiles(fileSource);
     this.pmtilesProtocol.add(p);
 
-    const sourceUrl = `pmtiles://${file.name}`;
+    const fileName = fileOrBlob.name || 'taiwan_topo.pmtiles';
+    const sourceUrl = `pmtiles://${fileName}`;
     const sourceId = 'taiwan-rudy-vector';
     const rudyStyle = createRudyTopoStyle(sourceId, sourceUrl);
 
     this.map.setStyle(rudyStyle);
-    this.currentOfflineFileName = file.name;
+    this.currentOfflineFileName = fileName;
     this.isOfflineMode = true;
 
     this.map.once('style.load', () => {
       this.setupGpsLayers();
       this.setupHighlightLayers();
       this.setupClickListeners();
-      console.log('[Map] Rudy TOPO loaded:', file.name);
+      console.log('[Map] Rudy TOPO loaded & layers re-bound.');
     });
   }
 
@@ -95,7 +111,7 @@ export class RudyMap {
         }
       });
 
-      // 被選取線條高亮 (外光暈)
+      // 被選取線條高亮
       this.map.addLayer({
         id: 'selected-highlight-line-glow',
         type: 'line',
@@ -103,13 +119,11 @@ export class RudyMap {
         filter: ['==', '$type', 'LineString'],
         paint: {
           'line-color': '#38BDF8',
-          'line-width': 8,
-          'line-opacity': 0.7,
-          'line-blur': 2
+          'line-width': 7,
+          'line-opacity': 0.75
         }
       });
 
-      // 被選取線條核心
       this.map.addLayer({
         id: 'selected-highlight-line',
         type: 'line',
@@ -121,25 +135,25 @@ export class RudyMap {
         }
       });
 
-      // 被選取點位高亮 (光環)
+      // 被選取點位高亮
       this.map.addLayer({
         id: 'selected-highlight-point',
         type: 'circle',
         source: 'selected-highlight-source',
         filter: ['==', '$type', 'Point'],
         paint: {
-          'circle-radius': 12,
+          'circle-radius': 11,
           'circle-color': '#38BDF8',
           'circle-opacity': 0.5,
           'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 3
+          'circle-stroke-width': 2.5
         }
       });
     }
   }
 
   /**
-   * 設定路線與地標點擊事件監聽
+   * 設定路線與地標點擊事件 (iOS 輕觸最佳化)
    */
   setupClickListeners() {
     const clickableLayers = [
@@ -152,29 +166,14 @@ export class RudyMap {
       'poi-camp-hut-label'
     ];
 
-    // 滑鼠移入手勢指標
-    clickableLayers.forEach((layerId) => {
-      if (this.map.getLayer(layerId)) {
-        this.map.on('mouseenter', layerId, () => {
-          this.map.getCanvas().style.cursor = 'pointer';
-        });
-        this.map.on('mouseleave', layerId, () => {
-          this.map.getCanvas().style.cursor = '';
-        });
-      }
-    });
-
-    // 點擊事件
     this.map.on('click', (e) => {
-      // 查詢點擊位置附近的圖層 (包含容差緩衝)
+      // 容差範圍：在手機觸控上設為 8px
       const bbox = [
-        [e.point.x - 6, e.point.y - 6],
-        [e.point.x + 6, e.point.y + 6]
+        [e.point.x - 8, e.point.y - 8],
+        [e.point.x + 8, e.point.y + 8]
       ];
 
-      // 找出存在的圖層
       const activeClickable = clickableLayers.filter((l) => this.map.getLayer(l));
-      // 同時包含任何自訂載入的 GPX 路線
       const allLayers = this.map.getStyle().layers || [];
       const gpxLineLayers = allLayers.filter((l) => l.id.startsWith('gpx-line-')).map((l) => l.id);
       const queryLayers = [...activeClickable, ...gpxLineLayers];
@@ -191,7 +190,6 @@ export class RudyMap {
           this.onFeatureSelected(topFeature, [e.lngLat.lng, e.lngLat.lat]);
         }
       } else {
-        // 點擊空白處清除選取
         this.clearHighlight();
         if (this.onFeatureSelected) {
           this.onFeatureSelected(null, null);
@@ -200,9 +198,6 @@ export class RudyMap {
     });
   }
 
-  /**
-   * 高亮指定 Feature
-   */
   highlightFeature(feature) {
     const source = this.map.getSource('selected-highlight-source');
     if (source && feature.geometry) {
@@ -213,9 +208,6 @@ export class RudyMap {
     }
   }
 
-  /**
-   * 清除高亮
-   */
   clearHighlight() {
     const source = this.map.getSource('selected-highlight-source');
     if (source) {
@@ -226,9 +218,6 @@ export class RudyMap {
     }
   }
 
-  /**
-   * 建立 GPS 即時標記
-   */
   setupGpsLayers() {
     if (!this.gpsMarker) {
       const el = document.createElement('div');
@@ -241,27 +230,28 @@ export class RudyMap {
     }
   }
 
-  /**
-   * 更新 GPS 目前位置
-   */
   updateGpsLocation(point, shouldPan = false) {
     if (!point || !this.map) return;
 
-    const coords = [point.lng, point.lat];
+    // 檢查是否在台灣區域內
+    const lng = point.lng;
+    const lat = point.lat;
+    if (lng < 118.0 || lng > 122.5 || lat < 21.3 || lat > 26.2) {
+      console.warn('[GPS] Current location is outside Taiwan bounds:', lat, lng);
+    }
+
+    const coords = [lng, lat];
     this.gpsMarker.setLngLat(coords).addTo(this.map);
 
     if (shouldPan) {
       this.map.easeTo({
         center: coords,
-        zoom: Math.max(this.map.getZoom(), 15.5),
-        duration: 800
+        zoom: Math.max(this.map.getZoom(), 15.2),
+        duration: 600
       });
     }
   }
 
-  /**
-   * 載入 GPX 軌跡供背景參考
-   */
   addGpxTrack(trackItem) {
     const sourceId = `gpx-source-${trackItem.id}`;
     const lineLayerId = `gpx-line-${trackItem.id}`;
@@ -282,7 +272,7 @@ export class RudyMap {
         filter: ['==', '$type', 'LineString'],
         paint: {
           'line-color': '#FFFFFF',
-          'line-width': 5,
+          'line-width': 4.5,
           'line-opacity': 0.7
         }
       });
@@ -294,7 +284,7 @@ export class RudyMap {
         filter: ['==', '$type', 'LineString'],
         paint: {
           'line-color': trackItem.color,
-          'line-width': 3.5
+          'line-width': 3.0
         }
       });
 
@@ -304,10 +294,10 @@ export class RudyMap {
         source: sourceId,
         filter: ['==', '$type', 'Point'],
         paint: {
-          'circle-radius': 6,
+          'circle-radius': 5.5,
           'circle-color': trackItem.color,
           'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 2
+          'circle-stroke-width': 1.8
         }
       });
 
@@ -332,7 +322,7 @@ export class RudyMap {
     }
 
     if (trackItem.bounds) {
-      this.map.fitBounds(trackItem.bounds, { padding: 40, duration: 1000 });
+      this.map.fitBounds(trackItem.bounds, { padding: 40, duration: 800 });
     }
   }
 
@@ -353,13 +343,10 @@ export class RudyMap {
 
   fitBounds(bounds) {
     if (bounds && this.map) {
-      this.map.fitBounds(bounds, { padding: 40, duration: 1000 });
+      this.map.fitBounds(bounds, { padding: 40, duration: 800 });
     }
   }
 
-  /**
-   * WGS84 經緯度轉 TWD97 (二度分帶投影)
-   */
   static wgs84ToTwd97(lat, lng) {
     const a = 6378137.0;
     const b = 6356752.314245;
