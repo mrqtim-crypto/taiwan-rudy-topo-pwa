@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taiwan-rudy-topo-v1.4.0';
+const CACHE_NAME = 'taiwan-rudy-topo-v1.5.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS_TO_CACHE = [
   './js/app.js',
   './js/map.js',
   './js/topo-style.js',
+  './js/taiwan-peaks-data.js',
   './js/gpx-manager.js',
   './js/gps-tracker.js',
   './js/storage-manager.js',

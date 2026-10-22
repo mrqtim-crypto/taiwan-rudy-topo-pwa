@@ -1,7 +1,58 @@
 /**
- * 台灣魯地圖 (Taiwan Rudy TOPO) 風格定義
- * 針對 iOS 行動裝置效能優化版：分級縮放載入，遠看只繪製計曲線，近看才展開細部首曲線與小路，極致省電與順暢！
+ * 台灣登山多圖層樣式定義 (參考 taiwan-peak 的多底圖切換與魯地圖登山風格)
  */
+
+export const BASE_LAYERS = {
+  topo: {
+    id: 'topo',
+    name: '🏔️ 台灣等高線地形圖 (OpenTopoMap)',
+    url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+    maxzoom: 17
+  },
+  satellite: {
+    id: 'satellite',
+    name: '🛰️ 台灣高空正射航照圖 (Esri Satellite)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    maxzoom: 18
+  },
+  osm: {
+    id: 'osm',
+    name: '🗺️ 開放街圖 (OSM Standard)',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    maxzoom: 18
+  },
+  cyclosm: {
+    id: 'cyclosm',
+    name: '🚲 越野與自行車地圖 (CyclOSM)',
+    url: 'https://tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    maxzoom: 17
+  }
+};
+
+export function getBaseStyle(layerKey = 'topo') {
+  const layer = BASE_LAYERS[layerKey] || BASE_LAYERS.topo;
+
+  return {
+    version: 8,
+    sources: {
+      'base-tiles': {
+        type: 'raster',
+        tiles: [layer.url],
+        tileSize: 256,
+        attribution: '&copy; Taiwan Mountain Map'
+      }
+    },
+    layers: [
+      {
+        id: 'base-raster-layer',
+        type: 'raster',
+        source: 'base-tiles',
+        minzoom: 6,
+        maxzoom: layer.maxzoom || 18
+      }
+    ]
+  };
+}
 
 export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
   return {
@@ -15,7 +66,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
       }
     },
     layers: [
-      // 背景底色
       {
         id: 'background',
         type: 'background',
@@ -23,7 +73,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'background-color': '#F4F2EB'
         }
       },
-      // 國家公園與自然保護區 (zoom >= 8 顯示)
       {
         id: 'park-boundary',
         type: 'fill',
@@ -36,7 +85,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'fill-opacity': 0.3
         }
       },
-      // 水體面 (湖泊水庫)
       {
         id: 'water-polygon',
         type: 'fill',
@@ -48,7 +96,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'fill-opacity': 0.75
         }
       },
-      // 主要水系與溪流 (zoom >= 11 顯示)
       {
         id: 'waterway',
         type: 'line',
@@ -57,14 +104,9 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
         minzoom: 11,
         paint: {
           'line-color': '#0284C7',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            11, 0.8,
-            15, 2.0
-          ]
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 15, 2.0]
         }
       },
-      // 【iOS 效能優化】等高線 - 首曲線 (一般 10m/20m) 僅在 zoom >= 13 時才渲染，遠看完全不消耗 GPU
       {
         id: 'contour-minor',
         type: 'line',
@@ -78,7 +120,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'line-width': 0.5
         }
       },
-      // 等高線 - 計曲線 (每 100m 加粗) zoom >= 10 開始渲染
       {
         id: 'contour-major',
         type: 'line',
@@ -89,14 +130,9 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
         paint: {
           'line-color': '#78350F',
           'line-opacity': 0.75,
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            10, 0.8,
-            14, 1.4
-          ]
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 14, 1.4]
         }
       },
-      // 計曲線高程文字 (zoom >= 13 顯示，避免文字過密卡頓)
       {
         id: 'contour-label',
         type: 'symbol',
@@ -108,8 +144,7 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'symbol-placement': 'line',
           'text-field': ['concat', ['to-string', ['get', 'ele']], 'm'],
           'text-size': 9.5,
-          'text-font': ['Open Sans Regular'],
-          'text-max-angle': 30
+          'text-font': ['Open Sans Regular']
         },
         paint: {
           'text-color': '#78350F',
@@ -117,7 +152,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'text-halo-width': 1.2
         }
       },
-      // 主要公路 / 聯絡道路 (zoom >= 8 顯示)
       {
         id: 'roads',
         type: 'line',
@@ -127,14 +161,9 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
         filter: ['in', 'class', 'primary', 'secondary', 'tertiary'],
         paint: {
           'line-color': '#F59E0B',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            8, 1.0,
-            14, 3.0
-          ]
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.0, 14, 3.0]
         }
       },
-      // 林道 (zoom >= 11 顯示)
       {
         id: 'forestry-track',
         type: 'line',
@@ -148,7 +177,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'line-dasharray': [4, 2]
         }
       },
-      // 登山步道 / 山徑 (zoom >= 11 顯示，清晰高對比紅線)
       {
         id: 'trail-path',
         type: 'line',
@@ -158,16 +186,10 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
         filter: ['==', 'class', 'path'],
         paint: {
           'line-color': '#DC2626',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            11, 1.2,
-            14, 2.4,
-            17, 3.2
-          ],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 14, 2.4, 17, 3.2],
           'line-dasharray': [3, 2]
         }
       },
-      // 山屋與營地 (zoom >= 11 顯示)
       {
         id: 'poi-camp-hut',
         type: 'circle',
@@ -183,27 +205,6 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
         }
       },
       {
-        id: 'poi-camp-hut-label',
-        type: 'symbol',
-        source: sourceId,
-        'source-layer': 'poi',
-        minzoom: 12,
-        filter: ['in', 'class', 'shelter', 'camp_site', 'alpine_hut'],
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 11,
-          'text-offset': [0, 1.2],
-          'text-anchor': 'top',
-          'text-font': ['Open Sans Bold']
-        },
-        paint: {
-          'text-color': '#166534',
-          'text-halo-color': '#FFFFFF',
-          'text-halo-width': 2
-        }
-      },
-      // 山峰與百岳三角點 (zoom >= 10 顯示)
-      {
         id: 'mountain-peak-point',
         type: 'circle',
         source: sourceId,
@@ -216,59 +217,9 @@ export function createRudyTopoStyle(sourceId = 'rudy-source', sourceUrl = '') {
           'circle-stroke-color': '#FEF08A',
           'circle-stroke-width': 1.8
         }
-      },
-      // 山峰名稱與標高 (zoom >= 11 顯示)
-      {
-        id: 'mountain-peak-label',
-        type: 'symbol',
-        source: sourceId,
-        'source-layer': 'poi',
-        minzoom: 11,
-        filter: ['==', 'class', 'peak'],
-        layout: {
-          'text-field': [
-            'case',
-            ['has', 'ele'],
-            ['concat', ['get', 'name'], '\n▲', ['to-string', ['get', 'ele']], 'm'],
-            ['get', 'name']
-          ],
-          'text-size': 11.5,
-          'text-offset': [0, -1.4],
-          'text-anchor': 'bottom',
-          'text-font': ['Open Sans Bold']
-        },
-        paint: {
-          'text-color': '#7F1D1D',
-          'text-halo-color': '#FFFFFF',
-          'text-halo-width': 2.2
-        }
       }
     ]
   };
 }
 
-/**
- * 預設備援底圖樣式 (僅涵蓋台灣區域)
- */
-export const defaultOnlineStyle = {
-  version: 8,
-  sources: {
-    'opentopo-tiles': {
-      type: 'raster',
-      tiles: [
-        'https://tile.opentopomap.org/{z}/{x}/{y}.png'
-      ],
-      tileSize: 256,
-      attribution: '&copy; OpenTopoMap contributors'
-    }
-  },
-  layers: [
-    {
-      id: 'opentopo-base',
-      type: 'raster',
-      source: 'opentopo-tiles',
-      minzoom: 6,
-      maxzoom: 18
-    }
-  ]
-};
+export const defaultOnlineStyle = getBaseStyle('topo');

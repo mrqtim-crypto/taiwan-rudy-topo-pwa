@@ -1,4 +1,6 @@
 :root {
+  --ios-safe-top: env(safe-area-inset-top, 0px);
+  --ios-safe-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
   --bg-primary: #0B0F12;
   --bg-secondary: #141C22;
   --bg-panel: rgba(18, 26, 32, 0.94);
@@ -50,10 +52,10 @@ body, html {
   touch-action: none;
 }
 
-/* 頂部狀態列 */
+/* 頂部狀態列 (iOS Safe Area 自適應) */
 .top-status-bar {
   position: absolute;
-  top: 12px;
+  top: calc(12px + var(--ios-safe-top));
   left: 12px;
   right: 12px;
   z-index: 10;
@@ -113,7 +115,7 @@ body, html {
 /* 右側浮動工具列 */
 .side-tool-bar {
   position: absolute;
-  top: 70px;
+  top: calc(75px + var(--ios-safe-top));
   right: 12px;
   z-index: 10;
   display: flex;
@@ -159,7 +161,7 @@ body, html {
 /* 點擊地圖路線/地標資訊卡 */
 .route-info-card {
   position: absolute;
-  bottom: 60px;
+  bottom: calc(56px + var(--ios-safe-bottom));
   left: 12px;
   right: 12px;
   max-width: 480px;
@@ -258,7 +260,7 @@ body, html {
 /* 底部精簡定位膠囊 */
 .bottom-position-pill {
   position: absolute;
-  bottom: 16px;
+  bottom: calc(12px + var(--ios-safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
@@ -615,4 +617,55 @@ body, html {
     width: 40px;
     height: 40px;
   }
+}
+
+/* 圖層切換浮動選單 (參考 taiwan-peak 的圖層選擇器) */
+.layer-picker-menu {
+  position: absolute;
+  top: calc(75px + var(--ios-safe-top));
+  right: 68px;
+  z-index: 20;
+  background: var(--bg-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-lg);
+  width: 230px;
+  animation: cardSlideUp 0.15s ease-out;
+}
+
+.layer-picker-menu.show {
+  display: flex;
+}
+
+.layer-opt-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.layer-opt-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.layer-opt-btn.active {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: var(--accent);
+  font-weight: 700;
 }

@@ -1,13 +1,13 @@
 /**
- * 地圖渲染控制器 (針對台灣全島與 iOS 效能極致優化版)
+ * 地圖渲染控制器 (參考 taiwan-peak 的多圖層切換與百岳地標系統)
  */
 
-import { createRudyTopoStyle, defaultOnlineStyle } from './topo-style.js';
+import { createRudyTopoStyle, getBaseStyle } from './topo-style.js';
+import { TAIWAN_PEAKS } from './taiwan-peaks-data.js';
 
-// 台灣全境邊界 (包含台澎金馬、綠島、蘭嶼)
 const TAIWAN_BOUNDS = [
-  [118.0, 21.3], // 西南角 (金門南方、南岬)
-  [122.5, 26.2]  // 東北角 (彭佳嶼、宜蘭外海)
+  [118.0, 21.3],
+  [122.5, 26.2]
 ];
 
 export class RudyMap {
@@ -16,20 +16,13 @@ export class RudyMap {
     this.map = null;
     this.pmtilesProtocol = null;
     this.currentOfflineFileName = null;
+    this.currentBaseLayer = 'topo';
 
-    // GPS 標記
     this.gpsMarker = null;
-
-    // 路線點擊回呼
     this.onFeatureSelected = null;
-
-    // 狀態
     this.isOfflineMode = false;
   }
 
-  /**
-   * 初始化地圖 (包含 iOS 流暢度專屬硬體加速調校)
-   */
   async init() {
     if (window.pmtiles && window.maplibregl) {
       this.pmtilesProtocol = new window.pmtiles.Protocol();
@@ -37,23 +30,21 @@ export class RudyMap {
       console.log('[Map] PMTiles protocol registered.');
     }
 
-    // 針對 iOS 螢幕與 GPU 負載優化：限制 pixelRatio 最高 2x (避免 3x Retina 發燙掉幀)
     const optimizedPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
     this.map = new window.maplibregl.Map({
       container: this.containerId,
-      style: defaultOnlineStyle,
-      center: [120.957, 23.8], // 台灣地理中心 (南投水里)
+      style: getBaseStyle('topo'),
+      center: [120.957, 23.8],
       zoom: 8.5,
-      minZoom: 7,              // 鎖定全台灣視野
-      maxZoom: 17.5,           // 登山最詳盡級距
-      maxBounds: TAIWAN_BOUNDS,// 限制視野永遠不出台灣，零無效渲染
+      minZoom: 7,
+      maxZoom: 17.5,
+      maxBounds: TAIWAN_BOUNDS,
       pixelRatio: optimizedPixelRatio,
-      maxTileCacheSize: 45,    // 嚴格控制記憶體，預防 iOS Safari Jetsam 閃退
-      touchPitch: false,       // 關閉雙指 3D 俯仰，省電且防誤觸
-      dragRotate: true,        // 保留旋轉支援方向導航
-      attributionControl: false,
-      trackResize: true
+      maxTileCacheSize: 45,
+      touchPitch: false,
+      dragRotate: true,
+      attributionControl: false
     });
 
     this.map.addControl(new window.maplibregl.NavigationControl({ showCompass: true, showZoom: false }), 'top-right');
@@ -63,9 +54,28 @@ export class RudyMap {
       this.map.on('load', () => {
         this.setupGpsLayers();
         this.setupHighlightLayers();
+        this.setupTaiwanPeaksLayer();
         this.setupClickListeners();
         resolve();
       });
+    });
+  }
+
+  /**
+   * 切換底圖圖層 (例如 taiwan-peak 的圖層選單)
+   */
+  setBaseLayer(layerKey) {
+    if (this.currentBaseLayer === layerKey) return;
+    this.currentBaseLayer = layerKey;
+    const style = getBaseStyle(layerKey);
+
+    this.map.setStyle(style);
+    this.map.once('style.load', () => {
+      this.setupGpsLayers();
+      this.setupHighlightLayers();
+      this.setupTaiwanPeaksLayer();
+      this.setupClickListeners();
+      console.log(`[Map] Switched base layer to ${layerKey}`);
     });
   }
 
@@ -93,25 +103,83 @@ export class RudyMap {
     this.map.once('style.load', () => {
       this.setupGpsLayers();
       this.setupHighlightLayers();
+      this.setupTaiwanPeaksLayer();
       this.setupClickListeners();
-      console.log('[Map] Rudy TOPO loaded & layers re-bound.');
+      console.log('[Map] Rudy TOPO loaded.');
     });
   }
 
   /**
-   * 建立高亮選取圖層
+   * 建立台灣百岳地標圖層
    */
+  setupTaiwanPeaksLayer() {
+    if (this.map.getSource('taiwan-peaks-source')) return;
+
+    const geojson = {
+      type: 'FeatureCollection',
+      features: TAIWAN_PEAKS.map((peak) => ({
+        type: 'Feature',
+        properties: {
+          name: peak.name,
+          ele: peak.ele,
+          rank: peak.rank,
+          area: peak.area,
+          type: 'peak'
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [peak.lng, peak.lat]
+        }
+      }))
+    };
+
+    this.map.addSource('taiwan-peaks-source', {
+      type: 'geojson',
+      data: geojson
+    });
+
+    // 百岳紅金三角標記
+    this.map.addLayer({
+      id: 'taiwan-peaks-circle',
+      type: 'circle',
+      source: 'taiwan-peaks-source',
+      minzoom: 8,
+      paint: {
+        'circle-radius': 6,
+        'circle-color': '#DC2626',
+        'circle-stroke-color': '#FEF08A',
+        'circle-stroke-width': 2.5
+      }
+    });
+
+    // 山名與標高標籤
+    this.map.addLayer({
+      id: 'taiwan-peaks-label',
+      type: 'symbol',
+      source: 'taiwan-peaks-source',
+      minzoom: 9.5,
+      layout: {
+        'text-field': ['concat', ['get', 'name'], '\n▲', ['to-string', ['get', 'ele']], 'm'],
+        'text-size': 11,
+        'text-offset': [0, -1.5],
+        'text-anchor': 'bottom',
+        'text-font': ['Open Sans Bold']
+      },
+      paint: {
+        'text-color': '#7F1D1D',
+        'text-halo-color': '#FFFFFF',
+        'text-halo-width': 2.5
+      }
+    });
+  }
+
   setupHighlightLayers() {
     if (!this.map.getSource('selected-highlight-source')) {
       this.map.addSource('selected-highlight-source', {
         type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: []
-        }
+        data: { type: 'FeatureCollection', features: [] }
       });
 
-      // 被選取線條高亮
       this.map.addLayer({
         id: 'selected-highlight-line-glow',
         type: 'line',
@@ -135,7 +203,6 @@ export class RudyMap {
         }
       });
 
-      // 被選取點位高亮
       this.map.addLayer({
         id: 'selected-highlight-point',
         type: 'circle',
@@ -152,11 +219,10 @@ export class RudyMap {
     }
   }
 
-  /**
-   * 設定路線與地標點擊事件 (iOS 輕觸最佳化)
-   */
   setupClickListeners() {
     const clickableLayers = [
+      'taiwan-peaks-circle',
+      'taiwan-peaks-label',
       'trail-path',
       'forestry-track',
       'roads',
@@ -167,7 +233,6 @@ export class RudyMap {
     ];
 
     this.map.on('click', (e) => {
-      // 容差範圍：在手機觸控上設為 8px
       const bbox = [
         [e.point.x - 8, e.point.y - 8],
         [e.point.x + 8, e.point.y + 8]
@@ -187,7 +252,10 @@ export class RudyMap {
         this.highlightFeature(topFeature);
 
         if (this.onFeatureSelected) {
-          this.onFeatureSelected(topFeature, [e.lngLat.lng, e.lngLat.lat]);
+          const clickCoords = topFeature.geometry.type === 'Point' 
+            ? topFeature.geometry.coordinates 
+            : [e.lngLat.lng, e.lngLat.lat];
+          this.onFeatureSelected(topFeature, clickCoords);
         }
       } else {
         this.clearHighlight();
@@ -233,14 +301,7 @@ export class RudyMap {
   updateGpsLocation(point, shouldPan = false) {
     if (!point || !this.map) return;
 
-    // 檢查是否在台灣區域內
-    const lng = point.lng;
-    const lat = point.lat;
-    if (lng < 118.0 || lng > 122.5 || lat < 21.3 || lat > 26.2) {
-      console.warn('[GPS] Current location is outside Taiwan bounds:', lat, lng);
-    }
-
-    const coords = [lng, lat];
+    const coords = [point.lng, point.lat];
     this.gpsMarker.setLngLat(coords).addTo(this.map);
 
     if (shouldPan) {
@@ -333,8 +394,8 @@ export class RudyMap {
       `gpx-line-${trackId}`,
       `gpx-casing-${trackId}`
     ];
-    layers.forEach((layerId) => {
-      if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+    layers.forEach((l) => {
+      if (this.map.getLayer(l)) this.map.removeLayer(l);
     });
     if (this.map.getSource(`gpx-source-${trackId}`)) {
       this.map.removeSource(`gpx-source-${trackId}`);

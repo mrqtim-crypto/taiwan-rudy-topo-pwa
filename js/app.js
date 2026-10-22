@@ -67,6 +67,8 @@ class RudyApp {
 
     // 右側功能按鈕
     this.btnLocate = document.getElementById('btn-locate');
+    this.btnOpenLayers = document.getElementById('btn-open-layers');
+    this.layerPickerMenu = document.getElementById('layer-picker-menu');
     this.btnOpenMaps = document.getElementById('btn-open-maps');
     this.btnOpenGpx = document.getElementById('btn-open-gpx');
     this.btnOpenInfo = document.getElementById('btn-open-info');
@@ -109,6 +111,36 @@ class RudyApp {
     this.btnCloseRouteCard.addEventListener('click', () => {
       this.routeInfoCard.style.display = 'none';
       this.map.clearHighlight();
+    });
+
+    // 圖層切換選單開關 (參考 taiwan-peak)
+    this.btnOpenLayers.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.layerPickerMenu.classList.toggle('show');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!this.layerPickerMenu.contains(e.target) && e.target !== this.btnOpenLayers) {
+        this.layerPickerMenu.classList.remove('show');
+      }
+    });
+
+    document.querySelectorAll('.layer-opt-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const layerKey = e.currentTarget.getAttribute('data-layer');
+        document.querySelectorAll('.layer-opt-btn').forEach((b) => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        this.map.setBaseLayer(layerKey);
+
+        const names = {
+          topo: '等高線地形圖',
+          satellite: '正射航照圖',
+          osm: '開放街圖',
+          cyclosm: '越野路網'
+        };
+        this.domStatusMode.textContent = names[layerKey] || '台灣登山底圖';
+        this.layerPickerMenu.classList.remove('show');
+      });
     });
 
     // 視窗開關
